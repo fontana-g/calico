@@ -6,7 +6,7 @@ BeginPackage["CALICO`",{"FiniteFlow`"}]
 CATSyz::usage = "\
 CATSyz[polys,vars,maxdeg] returns solutions for the syzygy equations defined by the list of polynomials 'polys' \
 up to degree 'maxdeg' in the list of variables 'vars'.
-Solutions are split by degree, with the i-th element of the returned list having polynomials of degree 'i+1'.
+Solutions are split by degree, with the i-th element of the returned list having polynomials of degree 'i-1'.
 If the \"KnownSolutions\" option is used to pass a list of known solutions, they will be excluded by the returned list.
 "
 CATSyzMerge::usage = "CATSyzMerge[a,b] merges two solutions returned by CATSyz."
