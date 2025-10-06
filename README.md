@@ -1,7 +1,7 @@
 # CALICO
 
 CALICO is a Mathematica package based on the following publication:
-- Giuseppe Bertolini, Gaia Fontana, Tiziano Peraro, *CALICO: Computing Annihilators from Linear Identities Constraining (differential) Operators*, [arXiv:2506.13653](https://arxiv.org/abs/2506.13653)
+- Giuseppe Bertolini, Gaia Fontana, Tiziano Peraro, *CALICO: Computing Annihilators from Linear Identities Constraining (differential) Operators*, [JHEP 10 (2025) 018](https://link.springer.com/article/10.1007/JHEP10(2025)018) [[arXiv:2506.13653]](https://arxiv.org/abs/2506.13653).
 
 CALICO contains various routines for computing parametric annihilators and other differential operators, and using them to find identities between special functions with a suitable integral representation. It contains specialized routines for various representations of loop integrals, as well as more general routines which can be adapted to custom problems. Functions for solving syzygy equations and polynomial decomposition problems are also provided.
 
