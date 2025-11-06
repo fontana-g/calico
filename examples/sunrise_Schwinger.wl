@@ -111,7 +111,7 @@ lowersects = Table[Module[{sect=topsect}, sect[[ii]]=0; sect],{ii,L+1}];
 
 
 ndots = 3;
-seeds = CATGenerateSeeds[topsect,{0,ndots},{0,0}];
+seeds = Join[CATGenerateSeeds[topsect,{0,ndots},{0,0}],Join@@(CATGenerateSeeds[#,{0,ndots},{0,1}]&/@lowersects)];
 seeds1L = Join@@(CATGenerateSeeds[#,{0,ndots+L},{0,(*1*)0},{MemberQ[#,0,1]&}]&/@lowersects);
 
 
@@ -202,7 +202,7 @@ mistop = Select[mis,intT[#[[2]]]==L+1&];
 
 
 deop = CATDiffOperator[twist,zs,params[[2;;]],4,1,"KnownAnnihilatorSolutions"->ann];
-deriv = CATLPIdsFromDiffOperators["family",deop,zs,L,d];
+deriv = CATSchwingerIdsFromDiffOperators["family",deop,zs];
 misderivatives = Collect[simplifyeqs[Transpose[deriv@@#[[2]]&/@mistop]],_CATInt,Together];
 
 
