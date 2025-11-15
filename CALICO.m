@@ -233,7 +233,7 @@ SyzRulesRemoveZeroes[a_List]:=SyzRulesRemoveZeroes/@a;
 SyzRulesRemoveZeroes[{a_List -> b_,c___}]:=DeleteCases[{a -> b,c},_->0];
 
 
-fccEvalNode[g_,MONpolys_,params_]:=Module[
+fccEvalNode[g_,MONpolys_,params_,applyfun_]:=Module[
   {unique,tounique,ii,mons},
   unique = Union@@MONpolys[[;;,;;,2]];
   tounique = Association[{}];
@@ -242,7 +242,7 @@ fccEvalNode[g_,MONpolys_,params_]:=Module[
   mons[[;;,;;,2]] = Map[tounique,mons[[;;,;;,2]],{2}];
   If[TrueQ[params=={}],
     FFAlgRatNumEval[g,"fcc",unique];,
-    FFAlgRatFunEval[g,"fcc",{"in"},params,unique];
+    FFAlgRatFunEval[g,"fcc",{"in"},params,applyfun[unique]];
   ];
   mons
 ]
@@ -346,7 +346,7 @@ CATHomLSSolve[g_,params_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indep
 
 
 Options[CATHomSyz]:={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "KnownSolutions"->None, "PolynomialInParameters"->True, "NThreads"->Automatic
+  "KnownSolutions"->None, "PolynomialInParameters"->True, "NThreads"->Automatic, "ApplyFunction"->Identity
 };
 CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 {g,mindeg,MONpolys,deg,alphas,ccalphas,cc,ansatz,alphanasatz,FFMsyzeqs,
@@ -363,7 +363,7 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 		mindeg = OptionValue["MinDegree"];
 		
 		FFNewGraph[g,"in",params];
-		MONpolys = fccEvalNode[g,SygPolyRules[polys,vars],params];
+		MONpolys = fccEvalNode[g,SygPolyRules[polys,vars],params,OptionValue["ApplyFunction"]];
 		
 		(* From lower to higher in rev.deg.lex.
 			ordering first by monomials & then by index k*)
@@ -430,7 +430,7 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 
 
 Options[CATHomPolyDec]:={"Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSolutions"->None
+  "NThreads"->Automatic, "KnownSolutions"->None, "ApplyFunction"->Identity
 };
 CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 {g,MONpolys,MONrhs,degpolys,degrhs,deg,alphas,ccalphas,cc,ccr,ansatz,alphanasatz,FFMsyzeqs,
@@ -445,7 +445,7 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 		numericpt = Dispatch[Thread[params->NotSoRandomIntegerList[Length[params]]]];
 
 		FFNewGraph[g,"in",params];
-		MONpolys = fccEvalNode[g,SygPolyRules[Join[polys,rhs],vars],params];
+		MONpolys = fccEvalNode[g,SygPolyRules[Join[polys,rhs],vars],params,OptionValue["ApplyFunction"]];
 		MONrhs = MONpolys[[Length[polys]+1;;]];
 		MONpolys = MONpolys[[1;;Length[polys]]];
 		
@@ -514,7 +514,7 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 
 
 Options[CATSyz]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSolutions"->None, "PolynomialInParameters"->True
+  "NThreads"->Automatic, "KnownSolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity
 };
 CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
   {hpolys,hvars,auxvar,knownsols},
@@ -531,7 +531,8 @@ CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
     "MaxRecPrimes"->OptionValue["MaxRecPrimes"],
     "NThreads"->OptionValue["NThreads"],
     "KnownSolutions"->knownsols,
-    "PolynomialInParameters"->OptionValue["PolynomialInParameters"]
+    "PolynomialInParameters"->OptionValue["PolynomialInParameters"],
+    "ApplyFunction"->OptionValue["ApplyFunction"]
   ] /. auxvar->1
 ];
 
@@ -548,7 +549,7 @@ Join[a[[ii]],bb[[ii]]]
 
 
 Options[CATPolyDec]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSyzygySolutions"->None, "PolynomialInParameters"->True
+  "NThreads"->Automatic, "KnownSyzygySolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity
 };
 CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Module[
   {hpolys,hvars,hrhs,auxvar,knownsols,polydeg,rhsdeg,mindeg,subset,sol},
@@ -577,7 +578,8 @@ CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Modul
     "MaxRecDegree"->OptionValue["MaxRecDegree"],
     "MaxRecPrimes"->OptionValue["MaxRecPrimes"],
     "NThreads"->OptionValue["NThreads"],
-    "KnownSolutions"->knownsols
+    "KnownSolutions"->knownsols,
+    "ApplyFunction"->OptionValue["ApplyFunction"]
   ];
   If[!MemberQ[sol,CATImpossible],
     Break[];
