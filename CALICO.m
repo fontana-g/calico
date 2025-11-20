@@ -92,6 +92,9 @@ CATOrdering::usage = "CATOrdering[ordering], sets the type of ordering used by C
 
 CATImpossible::usage = "Symbol that signals an impossible polynomial decomposition or differential operator equation, for the specified order and maximum degree."
 
+CATNode::usage = "CATNode[...] is reserved by the CALICO package for identifiers of nodes of FiniteFlow graphs."
+CATCc::usage = "CATCc[node,j] is used by CALICO to represent the j-th element of node in a FiniteFlow graph."
+
 
 CATMellinIntegrFct::usage="CATMellinIntegrFct is the integrfct argument to be used with CATIdsFromAnnihilators for Mellin integrals."
 CATMellinToInt::usage="CATMellinToInt is the toCAT function to be used with CATIdsFromAnnihilators for Mellin integrals."
@@ -109,6 +112,8 @@ CATBaikovPoly::invspdenoms = "Unable to invert for the scalar products in terms 
 CATBaikovPoly::redundantdenoms = "Loop denominators are not linearly independent.";
 CATDualRegulated::undefined = "Undefined family `1` for dual integrals: you must define CATDualRegulated[`1`] first."
 CATOrdering::badord = "The specified ordering is not supported."
+CATSyz::ff2graph = "The \"Graph\" option is an experimental feature and currently requires using the exp branch of FiniteFlow."
+CATSyz::graphnopar = "The \"Graph\" option requires to specify the list of parameters via the option \"Parameters\"."
 
 
 Begin["`Private`"]
@@ -233,7 +238,7 @@ SyzRulesRemoveZeroes[a_List]:=SyzRulesRemoveZeroes/@a;
 SyzRulesRemoveZeroes[{a_List -> b_,c___}]:=DeleteCases[{a -> b,c},_->0];
 
 
-fccEvalNode[g_,MONpolys_,params_,applyfun_]:=Module[
+fccEvalNode[g_,fcc_,in_,MONpolys_,params_,applyfun_]:=Module[
   {unique,tounique,ii,mons},
   unique = Union@@MONpolys[[;;,;;,2]];
   tounique = Association[{}];
@@ -241,8 +246,8 @@ fccEvalNode[g_,MONpolys_,params_,applyfun_]:=Module[
   mons = MONpolys;
   mons[[;;,;;,2]] = Map[tounique,mons[[;;,;;,2]],{2}];
   If[TrueQ[params=={}],
-    FFAlgRatNumEval[g,"fcc",unique];,
-    FFAlgRatFunEval[g,"fcc",{"in"},params,applyfun[unique]];
+    FFAlgRatNumEval[g,fcc,unique];,
+    FFAlgRatFunEval[g,fcc,{in},params,applyfun[unique]];
   ];
   mons
 ]
@@ -280,12 +285,18 @@ FilterAnsatz[numsyz_,vars_,deg_,cc_,ordering_]:= Module[
             ];
 
 
-CATHomLSSolve[g_,params_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indeptozero_]:=Module[
-  {eqs,res,cmap,ii,learn,nrec},
+CATHomLSSolve[g_,params_,fcc_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indeptozero_,customgraph_]:=Module[
+  {eqs,res,cmap,ii,learn,nrec,lsin,ls,cleanupnodes},
   
   If[Length[eqsin]==0,
     Return[{}];
   ];
+  
+  cleanupnodes[]:=(
+    FFDeleteNode[g,ls];
+    FFMakeMutable[g,lsin];
+    FFDeleteNode[g,lsin];
+  );
   
   res = Catch[
   
@@ -296,21 +307,33 @@ CATHomLSSolve[g_,params_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indep
   eqs = eqsin;
   eqs[[;;,;;,1]] = Map[cmap,eqs[[;;,;;,1]],{2}];
   eqs = SortBy[#,First]&/@eqs;
-  FFAlgTake[g,"lsin",{"fcc"},{1,#}&/@Join@@eqs[[;;,;;,2]]];
-  
-  FFAlgNodeSparseSolver[g,"ls",{"lsin"},eqs[[;;,;;,1]],coeffs];
-  If[TrueQ[indeptozero && $FFVersion>=2],
-    FFSolverOnlyNonHomogeneous[g,"ls"];
+  If[customgraph,
+    lsin = CATNode[FFPeekNewNodeId[g]];
   ];
-  FFSolverSparseOutput[g,"ls"];
-  FFGraphOutput[g,"ls"];
+  FFAlgTake[g,lsin,{fcc},{1,#}&/@Join@@eqs[[;;,;;,2]]];
+  
+  If[customgraph,
+    ls = CATNode[FFPeekNewNodeId[g]];
+  ];
+  FFAlgNodeSparseSolver[g,ls,{lsin},eqs[[;;,;;,1]],coeffs];
+  If[TrueQ[indeptozero && $FFVersion>=2],
+    FFSolverOnlyNonHomogeneous[g,ls];
+  ];
+  FFSolverSparseOutput[g,ls];
+  FFGraphOutput[g,ls];
   
   learn = FFSparseSolverLearn[g,coeffs];
   If[!TrueQ[learn[[0]]==List],Throw[learn]];
-  FFSparseSolverMarkAndSweepEqs[g,"ls"];
+  FFSparseSolverMarkAndSweepEqs[g,ls];
+  
+  If[customgraph,
+    res = FFSparseSolverSol[CATCc[ls,#]&/@Range[FFNParsOut[g,ls]],learn];
+    If[FFNParsOut[g,ls]===0, cleanupnodes[];];
+    Return[res];
+  ];
   
   If[TrueQ[$FFVersion>=2],
-    nrec = FFTakeUnique[g,"nrec",{"ls"}];
+    nrec = FFTakeUnique[g,"nrec",{ls}];
     FFGraphOutput[g,"nrec"];
   ];
   
@@ -324,7 +347,7 @@ CATHomLSSolve[g_,params_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indep
         ];
   If[TrueQ[$FFVersion>=2],
     FFDeleteNode[g,"nrec"];
-    FFMakeMutable[g,"ls"];
+    FFMakeMutable[g,ls];
   ];
   
   If[!TrueQ[res[[0]]==List],Throw[res]];
@@ -336,50 +359,91 @@ CATHomLSSolve[g_,params_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,indep
   
   ];
   
-  FFDeleteNode[g,"ls"];
-  FFMakeMutable[g,"lsin"];
-  FFDeleteNode[g,"lsin"];
+  If[!customgraph || res[[0]] =!= List, cleanupnodes[]];
   
   If[res === FFImpossible, res = CATImpossible];
   res
 ];
 
 
+If[TrueQ[$FFVersion >= 2],
+  checkff2graph = True&;,
+  checkff2graph = (Message[CATSyz::ff2graph]; False)&;
+];
+
+
+ccevals[expr_,graph_,numericpt_]:=Module[
+  {catccs,nodes},
+  catccs = SortBy[Union[Cases[{expr},_CATCc,Infinity]],First];
+  nodes = Union[catccs[[;;,1]]];
+  Join@@Table[
+    FFGraphOutput[graph,nn];
+    Thread[(CATCc[nn,#]&/@Range[FFNParsOut[graph,nn]])->FFGraphEvaluate[graph,numericpt]]
+  ,{nn,nodes}]
+];
+
+
 Options[CATHomSyz]:={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "KnownSolutions"->None, "PolynomialInParameters"->True, "NThreads"->Automatic, "ApplyFunction"->Identity
+  "KnownSolutions"->None, "PolynomialInParameters"->True, "NThreads"->Automatic, "ApplyFunction"->Identity,
+  "Graph"->None, "InputNode"->Automatic
 };
 CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 {g,mindeg,MONpolys,deg,alphas,ccalphas,cc,ansatz,alphanasatz,FFMsyzeqs,
  coeffs,ordering,eqs,sols,solvedansatz,indepccs,alldirections,subs,syz,numericpt,
- filteredoutccs,numsyz,params,knownsols,ii,maybetopoly,MON},
+ filteredoutccs,numsyz,params,knownsols,ii,maybetopoly,MON,inputpt,
+ customgraph,in,fcc,catccnums={},one=1,anysolution=False},
 
 		print["- setting up homogeneous syzygy solver"];
 		params = OptionValue["Parameters"];
+		customgraph = OptionValue["Graph"] =!= None;
+		If[customgraph && !checkff2graph[], Return[$Failed]];
 		If[TrueQ[params==Automatic],
 		  params = Sort[Complement[Variables[polys],vars]];
+		  If[Length[params]>1 && customgraph,
+		    Message[CATSyz::graphnopar]; Return[$Failed];
+		  ];
 		];
-		numericpt = Dispatch[Thread[params->NotSoRandomIntegerList[Length[params]]]];
 
 		mindeg = OptionValue["MinDegree"];
 		
-		FFNewGraph[g,"in",params];
-		MONpolys = fccEvalNode[g,SygPolyRules[polys,vars],params,OptionValue["ApplyFunction"]];
+	    If[customgraph,
+	      g = OptionValue["Graph"];
+		  in = OptionValue["InputNode"];
+		  If[in === Automatic && Length[params] != 0, in = FFGraphInputNode[g];];
+		  If[!FFAlgQ[g,CATNode[-1]], FFAlgRatNumEval[g,CATNode[-1],{1}]];
+		  one = CATCc[CATNode[-1],1];
+		  fcc = CATNode[FFPeekNewNodeId[g]];
+		];
+		
+		If[!customgraph,
+		  numericpt = Dispatch[Thread[params->NotSoRandomIntegerList[Length[params]]]];
+		,
+		  inputpt = NotSoRandomIntegerList[FFNParsOut[g,FFGraphInputNode[g]]];
+		  FFGraphOutput[g,in];
+		  numericpt = Dispatch[Thread[params->FFGraphEvaluate[g,inputpt]]];
+		];
+		
+		If[!customgraph,
+		  FFNewGraph[g,in,params];
+		];
+		MONpolys = fccEvalNode[g,fcc,in,SygPolyRules[polys,vars],params,OptionValue["ApplyFunction"]];
 		
 		(* From lower to higher in rev.deg.lex.
 			ordering first by monomials & then by index k*)
-         ordering=syzordering;
+        ordering=syzordering;
         (*building the fj ansatz*)
         syz = {}&/@Range[maxdeg+1];
         numsyz = {}&/@Range[maxdeg+1];
 
         (* add known solutions to numerical solutions *)
         knownsols = OptionValue["KnownSolutions"];
+        If[customgraph, catccnums = Dispatch[ccevals[knownsols, g, inputpt]]];
         If[TrueQ[knownsols[[0]]==List],
-          knownsols = SygPolyRules[knownsols /.numericpt,vars];
+          knownsols = SygPolyRules[knownsols /. catccnums /.numericpt,vars];
         ];
         Do[numsyz[[ii]] = knownsols[[ii]]; ,{ii,Min[Length[knownsols],Length[numsyz]]}];
 
-        If[TrueQ[OptionValue["PolynomialInParameters"]],
+        If[TrueQ[!customgraph && OptionValue["PolynomialInParameters"]],
           maybetopoly = SyzRulesToPoly,
           maybetopoly = Identity
         ];
@@ -400,9 +464,9 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 			(*solving eqs*)
 			coeffs = SortBy[DeleteDuplicates[Cases[eqs, _cc,Infinity]],ordering];
 			print["- linear solver"];
-			sols = CATHomLSSolve[g,params,eqs,coeffs,
+			sols = CATHomLSSolve[g,params,fcc,eqs,coeffs,
 			                     OptionValue["MaxRecDegree"], OptionValue["MaxRecPrimes"],
-			                     OptionValue["NThreads"], False];
+			                     OptionValue["NThreads"], False, customgraph];
 			If[!TrueQ[sols[[0]]==List],
 			  Message[CATSyz::badrec];
 			  Break[];
@@ -414,38 +478,68 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 			solvedansatz = Collect[ansatz/.Dispatch[sols],_cc];
 			(*quali coeff sono nell ansatz risolta*)
 			indepccs = SortBy[DeleteDuplicates[Cases[solvedansatz,_cc,Infinity]],ordering];
+			If[customgraph,
+			  solvedansatz = Map[If[FreeQ[#,_CATCc],#[[1]]->#[[2]]one, #]&, solvedansatz, {2}];
+			];
 			If[TrueQ[Length[indepccs]==0],
 			  syz[[deg+1]]={};
 			(*Else*),
+			  anysolution = True;
 			  alldirections = UnitVector[Length[indepccs],#]&/@Range[Length[indepccs]];
 			  subs = Dispatch/@Table[Thread[indepccs->alldirections[[ii]]],{ii,Length[alldirections]}];
 			  syz[[deg+1]] = maybetopoly/@SyzRulesRemoveZeroes[solvedansatz/.subs];
 			];
-			numsyz[[deg+1]] = DeleteDuplicates[Join[numsyz[[deg+1]], syz[[deg+1]] /. numericpt]];
+			If[customgraph, catccnums = Dispatch[ccevals[syz[[deg+1]], g, inputpt]]];
+			numsyz[[deg+1]] = DeleteDuplicates[Join[numsyz[[deg+1]], syz[[deg+1]] /. catccnums /. numericpt]];
 			(*vogliamo fare tante soluzioni in cui tutti i cc indipendenti sono 0 tranne 1*)
          ,{deg,mindeg,maxdeg}];
-     FFDeleteGraph[g];
+     If[customgraph && !anysolution, FFMakeMutable[g,fcc]; FFDeleteNode[g,fcc];];
+     If[!customgraph, FFDeleteGraph[g];];
      Map[FromCoefficientRules[#,vars]&,syz,{3}]
 ]
 
 
 Options[CATHomPolyDec]:={"Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSolutions"->None, "ApplyFunction"->Identity
+  "NThreads"->Automatic, "KnownSolutions"->None, "ApplyFunction"->Identity,
+  "Graph"->None, "InputNode"->Automatic
 };
 CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 {g,MONpolys,MONrhs,degpolys,degrhs,deg,alphas,ccalphas,cc,ccr,ansatz,alphanasatz,FFMsyzeqs,
  coeffs,coeffsr,ordering,eqs,sols,solvedansatz,indepccs,alldirections,subs,numericpt,
- filteredoutccs,numsyz,params,knownsols,ii,ansatzrhs,MON,foundsols,syzsol},
+ filteredoutccs,numsyz,params,knownsols,ii,ansatzrhs,MON,foundsols,syzsol,inputpt,
+ customgraph,in,fcc,catccnums={},anysolution=False},
 
 		print["- setting up homogeneous poly decomposition with ",Length[rhs]," r.h.s"];
 		params = OptionValue["Parameters"];
+		customgraph = OptionValue["Graph"] =!= None;
+		If[customgraph && !checkff2graph[], Return[$Failed]];
 		If[TrueQ[params==Automatic],
 		  params = Sort[Complement[Variables[polys],vars]];
+		  If[Length[params]>1 && customgraph,
+		    Message[CATSyz::graphnopar]; Return[$Failed];
+		  ];
 		];
-		numericpt = Dispatch[Thread[params->NotSoRandomIntegerList[Length[params]]]];
+		
+		If[customgraph,
+		  g = OptionValue["Graph"];
+		  in = OptionValue["InputNode"];
+		  If[in === Automatic && Length[params] != 0, in = FFGraphInputNode[g];];
+		  If[!FFAlgQ[g,CATNode[-1]], FFAlgRatNumEval[g,CATNode[-1],{1}]];
+		  fcc = CATNode[FFPeekNewNodeId[g]];
+		];
+		
+		If[!customgraph,
+		  numericpt = Dispatch[Thread[params->NotSoRandomIntegerList[Length[params]]]];
+		,
+		  inputpt = NotSoRandomIntegerList[FFNParsOut[g,FFGraphInputNode[g]]];
+		  FFGraphOutput[g,in];
+		  numericpt = Dispatch[Thread[params->FFGraphEvaluate[g,inputpt]]];
+		];
 
-		FFNewGraph[g,"in",params];
-		MONpolys = fccEvalNode[g,SygPolyRules[Join[polys,rhs],vars],params,OptionValue["ApplyFunction"]];
+		If[!customgraph,
+		  FFNewGraph[g,in,params];
+		];
+		MONpolys = fccEvalNode[g,fcc,in,SygPolyRules[Join[polys,rhs],vars],params,OptionValue["ApplyFunction"]];
 		MONrhs = MONpolys[[Length[polys]+1;;]];
 		MONpolys = MONpolys[[1;;Length[polys]]];
 		
@@ -466,8 +560,9 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 
         (* add known solutions to numerical solutions *)
         knownsols = OptionValue["KnownSolutions"];
+        If[customgraph, catccnums = Dispatch[ccevals[knownsols, g, inputpt]]];
         If[TrueQ[knownsols[[0]]==List],
-          knownsols = SygPolyRules[knownsols /.numericpt,vars];
+          knownsols = SygPolyRules[knownsols /. catccnums /.numericpt,vars];
         ];
         Do[numsyz[[ii]] = knownsols[[ii]]; ,{ii,Min[Length[knownsols],Length[numsyz]]}];
 
@@ -489,9 +584,9 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 			(*solving eqs*)
 			coeffs = SortBy[DeleteDuplicates[Cases[eqs, _cc,Infinity]],ordering];
 			print["- linear solver ",ii,"/",Length[rhs]];
-			sols = CATHomLSSolve[g,params,eqs,coeffs,
+			sols = CATHomLSSolve[g,params,fcc,eqs,coeffs,
 			                     OptionValue["MaxRecDegree"], OptionValue["MaxRecPrimes"],
-			                     OptionValue["NThreads"], True];
+			                     OptionValue["NThreads"], True, customgraph];
 			If[!TrueQ[sols[[0]]==List || sols==CATImpossible],
 			  Message[CATPolyDec::badrec];
 			];
@@ -502,19 +597,25 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 
 			  (* Else - solution found*)
 			  print["- building solutions"];
+			  anysolution=True;
 			  sols[[;;,2]] = sols[[;;,2]] /. cc->(0&);
 			  solvedansatz = Collect[ansatz/.Dispatch[sols] /. cc->(0&),_cc];
 			  FromCoefficientRules[#,vars]&/@SyzRulesRemoveZeroes[solvedansatz]
 			]
 	        ,{ii,Length[rhs]}];
-	     ];
-	 FFDeleteGraph[g];
+	 ];
+	 If[customgraph && !anysolution,
+	   FFMakeMutable[g,fcc];
+	   FFDeleteNode[g,fcc];
+     ];
+	 If[!customgraph, FFDeleteGraph[g];];
      syzsol
 ]
 
 
 Options[CATSyz]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity
+  "NThreads"->Automatic, "KnownSolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity,
+  "Graph"->None, "InputNode"->Automatic
 };
 CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
   {hpolys,hvars,auxvar,knownsols},
@@ -532,7 +633,9 @@ CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
     "NThreads"->OptionValue["NThreads"],
     "KnownSolutions"->knownsols,
     "PolynomialInParameters"->OptionValue["PolynomialInParameters"],
-    "ApplyFunction"->OptionValue["ApplyFunction"]
+    "ApplyFunction"->OptionValue["ApplyFunction"],
+    "Graph"->OptionValue["Graph"],
+    "InputNode"->OptionValue["InputNode"]
   ] /. auxvar->1
 ];
 
@@ -549,7 +652,8 @@ Join[a[[ii]],bb[[ii]]]
 
 
 Options[CATPolyDec]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
-  "NThreads"->Automatic, "KnownSyzygySolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity
+  "NThreads"->Automatic, "KnownSyzygySolutions"->None, "ApplyFunction"->Identity,
+  "Graph"->None, "InputNode"->Automatic
 };
 CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Module[
   {hpolys,hvars,hrhs,auxvar,knownsols,polydeg,rhsdeg,mindeg,subset,sol},
@@ -579,7 +683,9 @@ CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Modul
     "MaxRecPrimes"->OptionValue["MaxRecPrimes"],
     "NThreads"->OptionValue["NThreads"],
     "KnownSolutions"->knownsols,
-    "ApplyFunction"->OptionValue["ApplyFunction"]
+    "ApplyFunction"->OptionValue["ApplyFunction"],
+    "Graph"->OptionValue["Graph"],
+    "InputNode"->OptionValue["InputNode"]
   ];
   If[!MemberQ[sol,CATImpossible],
     Break[];
