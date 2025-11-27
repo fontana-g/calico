@@ -253,7 +253,7 @@ fccEvalNode[g_,fcc_,in_,MONpolys_,params_,applyfun_]:=Module[
 ]
 
 
-FilterAnsatz[numsyz_,vars_,deg_,cc_,ordering_]:= Module[
+FilterAnsatz[numsyz_,vars_,deg_,cc_,ordering_,extccfilter_]:= Module[
                {ldeg,compldeg,calphas,gensols,numg,numsys,nmons,tocceq,versors,
                 lccs,llearn,tmp,aa},
                tocceq[asyz_]:=Plus@@Join@@Table[
@@ -271,7 +271,11 @@ FilterAnsatz[numsyz_,vars_,deg_,cc_,ordering_]:= Module[
                If[Length[gensols]>0,
 
                FFNewGraph[numg];
-               lccs = Reverse[SortBy[DeleteDuplicates[Cases[gensols, _cc,Infinity]],ordering]];
+               If[extccfilter===None,
+                 lccs = Reverse[SortBy[DeleteDuplicates[Cases[gensols, _cc,Infinity]],ordering]];,
+                 (* if an external filter is present, we eliminate with higher priority terms not passing it *)
+                 lccs = Reverse[SortBy[DeleteDuplicates[Cases[gensols, _cc,Infinity]],{!extccfilter[##]&,ordering}]];
+               ];
                FFAlgSparseSolver[numg,numsys,{},{},Thread[gensols==0],lccs];
                FFGraphOutput[numg,numsys];
                FFSolverSparseOutput[numg,numsys];
@@ -385,13 +389,13 @@ ccevals[expr_,graph_,numericpt_]:=Module[
 
 Options[CATHomSyz]:={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
   "KnownSolutions"->None, "PolynomialInParameters"->True, "NThreads"->Automatic, "ApplyFunction"->Identity,
-  "Graph"->None, "InputNode"->Automatic
+  "Graph"->None, "InputNode"->Automatic, "FilterAnsatz"->None
 };
 CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 {g,mindeg,MONpolys,deg,alphas,ccalphas,cc,ansatz,alphanasatz,FFMsyzeqs,
  coeffs,ordering,eqs,sols,solvedansatz,indepccs,alldirections,subs,syz,numericpt,
  filteredoutccs,numsyz,params,knownsols,ii,maybetopoly,MON,inputpt,
- customgraph,in,fcc,catccnums={},one=1,anysolution=False},
+ customgraph,in,fcc,catccnums={},one=1,anysolution=False,extfilter,extccfilter},
 
 		print["- setting up homogeneous syzygy solver"];
 		params = OptionValue["Parameters"];
@@ -447,18 +451,25 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
           maybetopoly = SyzRulesToPoly,
           maybetopoly = Identity
         ];
+        
+        extfilter = OptionValue["FilterAnsatz"];
+        extccfilter = None;
 
 		Do[
 		    print["- degree ",deg];
 		    (* filtering *)
-            filteredoutccs = FilterAnsatz[numsyz,vars,deg,cc,ordering];
+		    If[!(extfilter === None), extccfilter = (extfilter[deg,#[[2]],#[[1]]]&); ];
+            filteredoutccs = FilterAnsatz[numsyz,vars,deg,cc,ordering,extccfilter];
 
             alphas =  MON/@MonomialExp[deg,Length[vars]];
 			ccalphas = cc@@#&/@alphas;
 			alphanasatz = Inner[#1[[1]]->#2 &,alphas, ccalphas, List];
 
-			(* TODO: put back filteredoutccs *)
 			ansatz = SyzRulesRemoveZeroes[Table[ alphanasatz/.cc->(cc[#,k]&),{k,Length[polys]}] /. Dispatch[#->0&/@filteredoutccs]];
+			If[!(extfilter === None),
+			  coeffs = DeleteDuplicates[Cases[ansatz,_cc,Infinity]];
+			  ansatz = SyzRulesRemoveZeroes[ ansatz /. Dispatch[#->0&/@Select[coeffs,!TrueQ[extccfilter[#]]&]] ];
+			];
 			eqs = SygEqFromRules[MONpolys,ansatz];
 
 			(*solving eqs*)
@@ -501,13 +512,13 @@ CATHomSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
 
 Options[CATHomPolyDec]:={"Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
   "NThreads"->Automatic, "KnownSolutions"->None, "ApplyFunction"->Identity,
-  "Graph"->None, "InputNode"->Automatic
+  "Graph"->None, "InputNode"->Automatic, "FilterAnsatz"->None
 };
 CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 {g,MONpolys,MONrhs,degpolys,degrhs,deg,alphas,ccalphas,cc,ccr,ansatz,alphanasatz,FFMsyzeqs,
  coeffs,coeffsr,ordering,eqs,sols,solvedansatz,indepccs,alldirections,subs,numericpt,
  filteredoutccs,numsyz,params,knownsols,ii,ansatzrhs,MON,foundsols,syzsol,inputpt,
- customgraph,in,fcc,catccnums={},anysolution=False},
+ customgraph,in,fcc,catccnums={},anysolution=False,extfilter,extccfilter},
 
 		print["- setting up homogeneous poly decomposition with ",Length[rhs]," r.h.s"];
 		params = OptionValue["Parameters"];
@@ -565,17 +576,24 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
           knownsols = SygPolyRules[knownsols /. catccnums /.numericpt,vars];
         ];
         Do[numsyz[[ii]] = knownsols[[ii]]; ,{ii,Min[Length[knownsols],Length[numsyz]]}];
+        
+        extfilter = OptionValue["FilterAnsatz"];
+        extccfilter = None;
 
 		Block[{},
 		    (* filtering *)
-            filteredoutccs = FilterAnsatz[numsyz,vars,deg,cc,ordering];
+		    If[!(extfilter === None), extccfilter = (extfilter[deg,#[[2]],#[[1]]]&); ];
+            filteredoutccs = FilterAnsatz[numsyz,vars,deg,cc,ordering,extccfilter];
 
             alphas =  MON/@MonomialExp[deg,Length[vars]];
 			ccalphas = cc@@#&/@alphas;
 			alphanasatz = Inner[#1[[1]]->#2 &,alphas, ccalphas, List];
 
-			(* TODO: put back filteredoutccs *)
 			ansatz = SyzRulesRemoveZeroes[Table[ alphanasatz/.cc->(cc[#,k]&),{k,Length[polys]}] /. Dispatch[#->0&/@filteredoutccs]];
+			If[!(extccfilter === None),
+			  coeffs = DeleteDuplicates[Cases[ansatz,_cc,Infinity]];
+			  ansatz = SyzRulesRemoveZeroes[ ansatz /. Dispatch[#->0&/@Select[coeffs,!TrueQ[extccfilter[#]]&]] ];
+			];
 
 			syzsol = Table[
 			ansatzrhs = {{ConstantArray[0,Length[vars]]->"rhs"}};
@@ -615,15 +633,19 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 
 Options[CATSyz]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
   "NThreads"->Automatic, "KnownSolutions"->None, "PolynomialInParameters"->True, "ApplyFunction"->Identity,
-  "Graph"->None, "InputNode"->Automatic
+  "Graph"->None, "InputNode"->Automatic, "FilterAnsatz"->None
 };
 CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
-  {hpolys,hvars,auxvar,knownsols},
+  {hpolys,hvars,auxvar,knownsols,filterin,filter},
   print["CATSyz:"];
   {hpolys,hvars} = CATToHomogeneous[polys,vars,auxvar];
   knownsols = OptionValue["KnownSolutions"];
+  filter = filterin = OptionValue["FilterAnsatz"];
   If[TrueQ[Length[hvars]>Length[vars] && Length[knownsols]>0],
     knownsols = Expand[(auxvar^# & /@ Range[0,Length[knownsols]-1]) knownsols /. Dispatch[Thread[vars -> vars/auxvar]],(Alternatives@@vars)|auxvar];
+  ];
+  If[TrueQ[Length[hvars]>Length[vars] && !(filter === None)],
+    filter = filterin[#1,#2,#3[[;;-2]]]&;
   ];
   CATHomSyz[hpolys,hvars,maxdeg,
     "MinDegree"->OptionValue["MinDegree"],
@@ -635,7 +657,8 @@ CATSyz[ polys_ , vars_ , maxdeg_, OptionsPattern[]]:=Module[
     "PolynomialInParameters"->OptionValue["PolynomialInParameters"],
     "ApplyFunction"->OptionValue["ApplyFunction"],
     "Graph"->OptionValue["Graph"],
-    "InputNode"->OptionValue["InputNode"]
+    "InputNode"->OptionValue["InputNode"],
+    "FilterAnsatz"->filter
   ] /. auxvar->1
 ];
 
@@ -653,10 +676,10 @@ Join[a[[ii]],bb[[ii]]]
 
 Options[CATPolyDec]={"MinDegree"->0, "Parameters"->Automatic, "MaxRecDegree"->Automatic, "MaxRecPrimes"->Automatic,
   "NThreads"->Automatic, "KnownSyzygySolutions"->None, "ApplyFunction"->Identity,
-  "Graph"->None, "InputNode"->Automatic
+  "Graph"->None, "InputNode"->Automatic, "FilterAnsatz"->None
 };
 CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Module[
-  {hpolys,hvars,hrhs,auxvar,knownsols,polydeg,rhsdeg,mindeg,subset,sol},
+  {hpolys,hvars,hrhs,auxvar,knownsols,polydeg,rhsdeg,mindeg,subset,sol,filter,filterin},
   print["CATPolyDec:"];
   {hpolys,polydeg} = CATToHomogeneousForceExtraVar[polys,vars,auxvar];
   {hrhs,rhsdeg} = CATToHomogeneousForceExtraVar[rhs,vars,auxvar];
@@ -666,8 +689,12 @@ CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Modul
   ];
   mindeg = Max[OptionValue["MinDegree"],rhsdeg-polydeg];
   knownsols = OptionValue["KnownSyzygySolutions"];
+  filter = filterin = OptionValue["FilterAnsatz"];
   If[TrueQ[Length[hvars]>Length[vars] && Length[knownsols]>0],
     knownsols = Expand[(auxvar^# & /@ Range[0,Length[knownsols]-1]) knownsols /. Dispatch[Thread[vars -> vars/auxvar]],(Alternatives@@vars)|auxvar];
+  ];
+  If[TrueQ[Length[hvars]>Length[vars] && !(filter === None)],
+    filter = filterin[#1,#2,#3[[;;-2]]]&;
   ];
 
   subset = Range[Length[rhs]]; (* subset of rhs that hasn't been solved yet *)
@@ -685,7 +712,8 @@ CATPolyDec[ polys_List , rhs_List, vars_List , maxdeg_, OptionsPattern[]]:=Modul
     "KnownSolutions"->knownsols,
     "ApplyFunction"->OptionValue["ApplyFunction"],
     "Graph"->OptionValue["Graph"],
-    "InputNode"->OptionValue["InputNode"]
+    "InputNode"->OptionValue["InputNode"],
+    "FilterAnsatz"->filter
   ];
   If[!MemberQ[sol,CATImpossible],
     Break[];
@@ -774,7 +802,7 @@ higherfromlowerord[extrao_,extrad_,ann_,o_,vars_]:=Module[{u,uvec,newuvec},
 
 Options[CATAnnihilator]=Join[Options[CATSyz],{"MinOrder"->1,"Substitutions"->{}}];
 CATAnnihilator[u_,vars_,maxdegree_,maxorder_,opt:OptionsPattern[]]:=Module[
-{c0,ci,annihilatorpolys,result,extknown,known,newknown,newannfromlower},
+{c0,ci,annihilatorpolys,result,extknown,known,newknown,newannfromlower,filter,syzfilter,ordops,ords,ii},
 print["CATAnnihilator:"];
 extknown = OptionValue["KnownSolutions"];
 known = ConstantArray[{},maxorder];
@@ -794,16 +822,24 @@ newannfromlower[mino_,maxo_]:=Module[{extrads,ann,annwdeg,newann},
 ];
 newannfromlower[2,OptionValue["MinOrder"]-1];
 
+filter = OptionValue["FilterAnsatz"];
+syzfilter = None;
+
 Do[
   (* find o-th order annihilators from lower orders, to exclude them from the solutions *)
   print["- order ",o];
   newannfromlower[o,o];
   print["- convert annihilator to syzygy equations"];
   annihilatorpolys = CATAnnihilatorToSyz[u,vars,o,OptionValue["Substitutions"]];
+  If[!(filter === None),
+   ordops = Join[{ConstantArray[0,Length[vars]]},Join@@Table[ords,{ii,1,o},{ords,MonomialExp[ii,Length[vars]]}]];
+   syzfilter = (filter[o,ordops[[#2]],#1,#3]&);
+  ];
   print["- compute syzygy"];
   result[[o]] = CATSyz[annihilatorpolys,vars,maxdegree,
-                     Sequence@@FilterRules[FilterRules[{opt},Except["KnownSolutions"]],Options[CATSyz]],
-                     "KnownSolutions"->known[[o]]];
+                     Sequence@@FilterRules[FilterRules[{opt},Except["KnownSolutions"|"FilterAnsatz"]],Options[CATSyz]],
+                     "KnownSolutions"->known[[o]],
+                     "FilterAnsatz"->syzfilter];
   known[[o]] = CATSyzMerge[known[[o]],result[[o]]];
 ,{o,OptionValue["MinOrder"],maxorder}];
 result
@@ -824,7 +860,8 @@ CATSyzMerge[a[[ii]],bb[[ii]]]
 Options[CATDiffOperator]=Join[FilterRules[Options[CATPolyDec],Except["KnownSyzygySolutions"]],
                               {"MinOrder"->1,"Substitutions"->{},"KnownAnnihilatorSolutions"->None}];
 CATDiffOperator[u_,vars_,diffparameters_,maxdegree_,maxorder_,opt:OptionsPattern[]]:=Module[
-{annihilatorpolys,rhs,result,extknown,known,newknown,newannfromlower,return,subset,ii,jj,fixres,subst},
+{annihilatorpolys,rhs,result,extknown,known,newknown,newannfromlower,return,subset,ii,jj,fixres,subst,
+ filter,syzfilter,ordops,ords},
 print["CATDiffOperator:"];
 extknown = OptionValue["KnownAnnihilatorSolutions"];
 known = ConstantArray[{},maxorder];
@@ -844,6 +881,9 @@ newannfromlower[mino_,maxo_]:=Module[{extrads,ann,annwdeg,newann},
 ];
 newannfromlower[2,OptionValue["MinOrder"]-1];
 
+filter = OptionValue["FilterAnsatz"];
+syzfilter = None;
+
 Do[
   print["- order ",o];
   (* find o-th order annihilators from lower orders, to exclude them from the solutions *)
@@ -854,11 +894,16 @@ Do[
   newannfromlower[o,o];
   print["- convert to polynomial decomposition"];
   {annihilatorpolys,rhs} = CATDiffToPolyDec[u,vars,diffparameters[[subset]],o,OptionValue["Substitutions"]];
+  If[!(filter === None),
+   ordops = Join[{ConstantArray[0,Length[vars]]},Join@@Table[ords,{ii,1,o},{ords,MonomialExp[ii,Length[vars]]}]];
+   syzfilter = (filter[o,ordops[[#2]],#1,#3]&);
+  ];
   print["- compute decomposition"];
   result[[subset]] = Thread[
            o->CATPolyDec[annihilatorpolys,rhs,vars,maxdegree,
-                        Sequence@@FilterRules[FilterRules[{opt},Except["KnownAnnihilatorSolutions"]],Options[CATPolyDec]],
-                        "KnownSyzygySolutions"->known[[o]]]
+                        Sequence@@FilterRules[FilterRules[{opt},Except["KnownAnnihilatorSolutions"|"FilterAnsatz"]],Options[CATPolyDec]],
+                        "KnownSyzygySolutions"->known[[o]],
+                        "FilterAnsatz"->syzfilter]
   ];
 ,{o,OptionValue["MinOrder"],maxorder}];
 
