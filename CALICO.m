@@ -525,7 +525,7 @@ CATHomPolyDec[polys_ , rhs_, vars_, OptionsPattern[]]:=Module[
 		customgraph = OptionValue["Graph"] =!= None;
 		If[customgraph && !checkff2graph[], Return[$Failed]];
 		If[TrueQ[params==Automatic],
-		  params = Sort[Complement[Variables[polys],vars]];
+		  params = Sort[Complement[Variables[{polys,rhs}],vars]];
 		  If[Length[params]>1 && customgraph,
 		    Message[CATSyz::graphnopar]; Return[$Failed];
 		  ];
