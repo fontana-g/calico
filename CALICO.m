@@ -95,6 +95,9 @@ CATImpossible::usage = "Symbol that signals an impossible polynomial decompositi
 CATNode::usage = "CATNode[...] is reserved by the CALICO package for identifiers of nodes of FiniteFlow graphs."
 CATCc::usage = "CATCc[node,j] is used by CALICO to represent the j-th element of node in a FiniteFlow graph."
 
+CATApplyAnnihililators::usage = "CATApplyAnnihililators[ann,vars,expr] applies the annihilators ann in the variables vars (in the form returned by CATAnnihilator) to the expression expr."
+CATApplyDiffOperators::usage = "CATApplyDiffOperators[diffop,params,vars,expr] applies the differential operators diffop in the variables vars (in the form returned by CATDiffOperator) to the expression expr."
+
 
 CATMellinIntegrFct::usage="CATMellinIntegrFct is the integrfct argument to be used with CATIdsFromAnnihilators for Mellin integrals."
 CATMellinToInt::usage="CATMellinToInt is the toCAT function to be used with CATIdsFromAnnihilators for Mellin integrals."
@@ -1253,6 +1256,10 @@ CATIntInvMonDefaultWeight[CATInt[fam_,ai_List]]:={
   Max[-ai],
   CATInt[fam,ai]
 }
+
+
+CATApplyAnnihililators[ann_,vars_,expr_]:=Table[Map[CATDerivativeList[expr,vars,Range[0,order]] . # &, ann[[order]],{2}],{order,1,Length[ann]}];
+CATApplyDiffOperators[diffop_,params_,vars_,expr_]:=Map[CATDerivativeList[expr,vars,Range[0,#[[1]]]] . #[[2]] &, diffop];
 
 
 End[] (* "`Private`" *)
