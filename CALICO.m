@@ -327,6 +327,7 @@ CATHomLSSolve[g_,params_,fcc_,eqsin_,coeffs_,maxrecdeg_,maxrecprimes_,nthreads_,
     FFSolverOnlyNonHomogeneous[g,ls];
   ];
   FFSolverSparseOutput[g,ls];
+  FFSparseSolverOptimizeZeroVars[g,ls];
   FFGraphOutput[g,ls];
   
   learn = FFSparseSolverLearn[g,coeffs];
