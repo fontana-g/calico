@@ -944,13 +944,16 @@ CATDotIBPDerivativeList[expr_List,vars_,order_]:=CATDotDerivativeListImplem[expr
 
 (*function for U,G,F polynomials*)
 CATUFGPolys[propslist_List,loopmoms_List,ids_List,varsname_]:=Module[
- {xDens, l, nvars, vars, M(*, kij, mij*), i, j, U, V(*, vi, ki*), F,G, loop2zero,Minvtilde},
+ {xDens, l, nvars, vars, M(*, kij, mij*), i, j, U, V(*, vi, ki*), F,G, loop2zero,Minvtilde, toden},
 
 		l=Length[loopmoms];
 		nvars=Length[propslist];
 		vars=varsname/@Range[nvars];
+		
+		toden[{k_,m2_}]:=k^2-m2;
+		toden[{k_,p_,m2_}]:=k p-m2;
 
-		xDens=Total[Table[Expand[propslist[[i, 1]]^2 -propslist[[i,2]]] * vars[[i]], {i, Length[propslist]}]];
+		xDens=Total[Table[Expand[toden[propslist[[i]]]] * vars[[i]], {i, Length[propslist]}]];
 		M=ConstantArray[0,{l,l}];
 
 		Do[
