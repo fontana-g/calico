@@ -115,7 +115,7 @@ CATBaikovPoly::invspdenoms = "Unable to invert for the scalar products in terms 
 CATBaikovPoly::redundantdenoms = "Loop denominators are not linearly independent.";
 CATDualRegulated::undefined = "Undefined family `1` for dual integrals: you must define CATDualRegulated[`1`] first."
 CATOrdering::badord = "The specified ordering is not supported."
-CATSyz::ff2graph = "The \"Graph\" option is an experimental feature and currently requires using the exp branch of FiniteFlow."
+CATSyz::ff2graph = "To use the \"Graph\" option, please update your FiniteFlow installation to the latest version."
 CATSyz::graphnopar = "The \"Graph\" option requires to specify the list of parameters via the option \"Parameters\"."
 
 
